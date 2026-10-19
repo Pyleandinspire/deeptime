@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="DeepSeek Time Watcher - 实时显示 DeepSeek API 峰谷时段、全天峰谷圆环与下一次切换倒计时">
+  <title>DeepSeek Time Watcher · 峰谷时段小助手</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="fatal-banner" id="fatalBanner" role="alert" hidden></div>
+
+  <header class="site-header">
+    <h1><span class="logo-dot" aria-hidden="true"></span>DeepSeek Time Watcher</h1>
+    <p class="subtitle">峰谷时段小助手 · 计费判断始终以北京时间(Asia/Shanghai)为准</p>
+  </header>
+
+  <main class="layout">
+    <!-- 主区域:24 小时峰谷圆环 + 数字时钟 -->
+    <section class="card ring-card" aria-label="全天峰谷圆环与当前时间">
+      <div class="ring-wrap">
+        <svg id="ringSvg" viewBox="0 0 340 340" role="img"
+             aria-label="固定 24 小时圆环:北京时间当天 0 点在正上方,顺时针;蓝色为峰时,白色为谷时,金色标记为当前时刻"></svg>
+        <div class="ring-center">
+          <div class="clock-time" id="clockTime">--:--:--</div>
+          <div class="clock-date" id="clockDate">正在加载…</div>
+          <div class="clock-tz" id="clockTz">--</div>
+          <div class="state-pill is-offpeak" id="statePill" aria-live="polite">--</div>
+        </div>
+      </div>
+      <div class="legend" aria-label="图例">
+        <span class="legend-item"><i class="swatch swatch-peak" aria-hidden="true"></i>峰时(蓝)</span>
+        <span class="legend-item"><i class="swatch swatch-offpeak" aria-hidden="true"></i>谷时(白)</span>
+        <span class="legend-item"><i class="swatch swatch-marker" aria-hidden="true"></i>当前时刻</span>
+      </div>
+      <p class="ring-note">圆环固定表示北京时间当天 00:00–24:00,0 点在正上方,顺时针前进</p>
+    </section>
+
+    <!-- 侧边区域 -->
+    <aside class="side">
+      <button type="button" class="card chara-card" id="charaBtn"
+              aria-label="节假日设置和计费规则" aria-haspopup="dialog" aria-describedby="charaTip">
+        <span class="chara-badge" aria-hidden="true">⚙</span>
+        <img id="charaImg" src="pic.jpg" alt="DeepSeek Time Watcher 看板角色">
+        <span class="chara-fallback" id="charaFallback" hidden>
+          <span class="chara-fallback-icon" aria-hidden="true">🐳</span>
+          <span>没有找到 <code>pic.jpg</code></span>
+          <span class="hint">请将图片放到与本页面相同的目录后刷新</span>
+        </span>
+        <span class="chara-tip" id="charaTip" role="tooltip">节假日设置和计费规则</span>
+      </button>
+
+      <section class="card status-card" aria-label="当前峰谷状态与倒计时">
+        <h2>当前状态</h2>
+        <p class="status-value is-offpeak" id="statusText" aria-live="polite">正在计算…</p>
+        <p class="day-type" id="dayTypeText">--</p>
+        <h2 id="countdownLabel">距离下一次峰谷切换</h2>
+        <p class="countdown-value" id="countdownText">--:--:--</p>
+        <p class="next-switch" id="nextSwitchText">--</p>
+      </section>
+
+</aside>
+  </main>
+
+  <!-- 设置二级页面:点击角色按钮后居中悬浮显示,页面其余部分模糊 -->
+  <div class="overlay overlay-blur" id="settingsOverlay" hidden>
+    <div class="panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="panel-head">
+        <h2 id="settingsTitle">节假日设置和计费规则</h2>
+        <button type="button" class="panel-close" id="settingsClose" aria-label="关闭设置面板">✕</button>
+      </div>
+
+      <section class="card settings-card" aria-label="显示时区设置">
+        <h2>显示时区</h2>
+        <div class="tz-switch" role="group" aria-label="选择数字时钟的显示时区">
+          <button type="button" class="tz-btn" id="tzBeijing">北京时间</button>
+          <button type="button" class="tz-btn" id="tzLocal">本地时间</button>
+        </div>
+        <p class="hint" id="tzInfo">--</p>
+        <p class="hint warn" id="storageNote" hidden></p>
+        <button type="button" class="ghost-btn" id="holidayBtn">节假日 / 日期修正管理</button>
+      </section>
+
+      <section class="card settings-card" aria-label="计费规则说明">
+        <h2>计费规则</h2>
+        <ul class="rules-list">
+          <li>峰时(蓝):北京时间周一至周五(不含法定节假日)09:00–12:00、14:00–18:00</li>
+          <li>谷时(白):其余时段;周末与法定节假日全天为谷时</li>
+          <li id="pricingNote">谷时价格为峰时的一半,以官方最新文档为准。</li>
+          <li>区间左闭右开:例如 09:00:00 整进入峰时,12:00:00 整进入谷时</li>
+        </ul>
+        <p class="hint">规则版本:<span id="ruleVersion">--</span></p>
+        <p class="hint">最近核对:<span id="ruleVerified">--</span> ·
+          <a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing" target="_blank" rel="noopener noreferrer">官方定价文档</a>
+        </p>
+      </section>
+    </div>
+  </div>
+
+  <!-- 节假日 / 日期修正管理面板 -->
+  <div class="overlay" id="holidayOverlay" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="holidayPanelTitle">
+      <h2 id="holidayPanelTitle">节假日与日期修正</h2>
+      <p class="hint" id="holidayCoverage">--</p>
+      <div class="chips" id="autoHolidayList" aria-label="已收录法定节假日"></div>
+
+      <h3>手动日期修正</h3>
+      <p class="hint">
+        手动修正优先于自动节假日;“普通计费日”只取消节假日标记,周末仍为全天谷时(调休上班不改变计费)。
+      </p>
+      <ul class="override-list" id="overrideList"></ul>
+
+      <form class="override-form" id="overrideForm">
+        <label class="visually-hidden" for="ovDate">日期</label>
+        <input type="date" id="ovDate" required>
+        <label class="visually-hidden" for="ovType">修正类型</label>
+        <select id="ovType">
+          <option value="holiday">标记为节假日(全天谷时)</option>
+          <option value="normal">标记为普通计费日(取消节假日标记)</option>
+        </select>
+        <button type="submit" class="primary-btn">添加</button>
+      </form>
+      <p class="form-error" id="ovError" role="alert" hidden></p>
+      <p class="hint" id="persistInfo">--</p>
+
+      <div class="panel-actions">
+        <button type="button" class="ghost-btn" id="ovReset">恢复默认修正</button>
+        <button type="button" class="primary-btn" id="holidayClose">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <noscript>
+    <div class="noscript-note">本页面需要启用 JavaScript 才能显示实时时钟与峰谷状态。</div>
+  </noscript>
+
+  <!-- 经典脚本,按依赖顺序加载:配置 → 规则计算 → 界面 -->
+  <script src="config.js"></script>
+  <script src="schedule.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
